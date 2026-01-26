@@ -12,7 +12,9 @@ use NotaFiscalSP\Builders\NF\PedidoConsultaLote;
 use NotaFiscalSP\Builders\NF\PedidoConsultaNFe;
 use NotaFiscalSP\Builders\NF\PedidoConsultaNFePeriodo;
 use NotaFiscalSP\Builders\NF\PedidoEnvioLoteRPS;
+use NotaFiscalSP\Builders\NF\PedidoEnvioLoteRPSV2;
 use NotaFiscalSP\Builders\NF\PedidoEnvioRPS;
+use NotaFiscalSP\Builders\NF\PedidoEnvioRPSV2;
 use NotaFiscalSP\Builders\NF\PedidoInformacoesLote;
 use NotaFiscalSP\Builders\Responses\BasicTransformerResponse;
 use NotaFiscalSP\Builders\Responses\CnpjInformationFactory;
@@ -112,9 +114,25 @@ class NfService
         return $response;
     }
 
+    public function sendNfV2(BaseInformation $baseInformation, $params)
+    {
+        $builder = new PedidoEnvioRPSV2();
+        $response = $this->processRequest($baseInformation, $params, NfMethods::ENVIO, $builder);
+        if($response->getSuccess() == 'false'){
+            $response->setMessage(General::getPath($response->getResponse(),'Erro.0.Descricao'));
+        }
+        return $response;
+    }
+
     public function sendLot(BaseInformation $baseInformation, $params)
     {
         $builder = new PedidoEnvioLoteRPS();
+        return $this->processRequest($baseInformation, $params, NfMethods::ENVIO_LOTE, $builder);
+    }
+
+    public function sendLotV2(BaseInformation $baseInformation, $params)
+    {
+        $builder = new PedidoEnvioLoteRPSV2();
         return $this->processRequest($baseInformation, $params, NfMethods::ENVIO_LOTE, $builder);
     }
 
