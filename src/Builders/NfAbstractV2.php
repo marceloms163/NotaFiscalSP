@@ -19,9 +19,8 @@ abstract class NfAbstractV2 implements InputTransformer
     {
         if (!empty($information->getCnpj())) {
             return [SimpleFieldsEnum::CNPJ => $information->getCnpj()];
-        } else {
-            return [SimpleFieldsEnum::CPF => $information->getCpf()];
         }
+        return [SimpleFieldsEnum::CPF => $information->getCpf()];
     }
 
     public function makeHeader(BaseInformation $information, $extraInformations)
@@ -157,7 +156,7 @@ abstract class NfAbstractV2 implements InputTransformer
                 $rps[RpsEnum::DISCRIMINATION] = $extraInformations[RpsEnum::DISCRIMINATION];
 
             // Optional Fields
-            if (isset($extraInformations[RpsEnum::CEI_CODE]) && !empty($extraInformations[RpsEnum::CEI_CODE]) )
+            if (isset($extraInformations[RpsEnum::CEI_CODE]) && !empty($extraInformations[RpsEnum::CEI_CODE]))
                 $rps[RpsEnum::CEI_CODE] = $extraInformations[RpsEnum::CEI_CODE];
 
             if (isset($extraInformations[RpsEnum::WORK_REGISTRATION]) && !empty($extraInformations[RpsEnum::WORK_REGISTRATION]))
@@ -169,13 +168,13 @@ abstract class NfAbstractV2 implements InputTransformer
             if (isset($extraInformations[RpsEnum::ENCAPSULATION_NUMBER]) && !empty($extraInformations[RpsEnum::ENCAPSULATION_NUMBER]))
                 $rps[RpsEnum::ENCAPSULATION_NUMBER] = $extraInformations[RpsEnum::ENCAPSULATION_NUMBER];
 
-            if (isset($extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY]) && !empty($extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY]) )
+            if (isset($extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY]) && !empty($extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY]))
                 $rps[RpsEnum::TAX_VALUE_INTERMEDIARY] = $extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY];
 
-            if (isset($extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY]) && !empty($extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY]) )
+            if (isset($extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY]) && !empty($extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY]))
                 $rps[RpsEnum::TAX_PERCENT_INTERMEDIARY] = $extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY];
 
-            if (isset($extraInformations[RpsEnum::TAX_ORIGIN]) && !empty($extraInformations[RpsEnum::TAX_ORIGIN]) )
+            if (isset($extraInformations[RpsEnum::TAX_ORIGIN]) && !empty($extraInformations[RpsEnum::TAX_ORIGIN]))
                 $rps[RpsEnum::TAX_ORIGIN] = $extraInformations[RpsEnum::TAX_ORIGIN];
 
             foreach (RpsEnumV2::extraTypes() as $field) {
@@ -211,3 +210,4 @@ abstract class NfAbstractV2 implements InputTransformer
         return $address;
     }
 }
+
