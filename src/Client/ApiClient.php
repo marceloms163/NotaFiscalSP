@@ -24,15 +24,16 @@ class ApiClient
         try {
             $client = new SoapClient($wsdlBase->getWsdl(), $options);
 
-            $arguments = [
-                $method => [
-                    'VersaoSchema' => 2,
-                    'MensagemXML' => $baseInformation->getXml()
-                ],
+            // Tenta enviar VersaoSchema também como Header, caso o servidor ignore o parâmetro do método
+            $header = new \SoapHeader('http://www.prefeitura.sp.gov.br/nfe', 'VersaoSchema', 2);
+            $client->__setSoapHeaders($header);
+            
+            $parameters = [
+                'VersaoSchema' => 2,
+                'MensagemXML' => $baseInformation->getXml()
             ];
 
-            $options = [];
-            $result = $client->__soapCall($method, $arguments, $options);
+            $result = $client->$method($parameters);
             return $result->RetornoXML;
         } catch (Exception $e) {
             $response = new BasicResponse();

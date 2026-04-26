@@ -12,6 +12,8 @@ use NotaFiscalSP\Contracts\InputTransformer;
 use NotaFiscalSP\Entities\BaseInformation;
 use NotaFiscalSP\Helpers\Certificate;
 use NotaFiscalSP\Helpers\General;
+use NotaFiscalSP\Constants\FieldData\BooleanFields;
+use NotaFiscalSP\Constants\FieldData\RPSType;
 
 abstract class NfAbstractV2 implements InputTransformer
 {
@@ -168,8 +170,10 @@ abstract class NfAbstractV2 implements InputTransformer
                 $rps[RpsEnum::SERVICE_TAX] = $extraInformations[RpsEnum::SERVICE_TAX];
 
             // 16. ISSRetido (1963)
-            if (isset($extraInformations[RpsEnum::ISS_RETENTION]))
-                $rps[RpsEnum::ISS_RETENTION] = ($extraInformations[RpsEnum::ISS_RETENTION] === 'true' || $extraInformations[RpsEnum::ISS_RETENTION] === true || $extraInformations[RpsEnum::ISS_RETENTION] == 1);
+            $issRetido = $extraInformations[RpsEnum::ISS_RETENTION] ?? false;
+            $isRetidoBool = ($issRetido === 'true' || $issRetido === true || $issRetido === 'S' || $issRetido == 1);
+            
+            $rps[RpsEnum::ISS_RETENTION] = $isRetidoBool ? BooleanFields::LOWER_TRUE : BooleanFields::LOWER_FALSE;
 
             // 17. CPFCNPJTomador (1968)
             $rps[RpsEnum::CPFCNPJ_TAKER] = $this->makeCPFCNPJTaker($extraInformations);
@@ -233,6 +237,9 @@ abstract class NfAbstractV2 implements InputTransformer
             // 35. ValorTotalRecebido (2058)
             if (isset($extraInformations[RpsEnum::TOTAL_VALUE]))
                 $rps[RpsEnum::TOTAL_VALUE] = $extraInformations[RpsEnum::TOTAL_VALUE];
+
+            // --- FIM DA SEQUÊNCIA V1 ---
+            // --- INÍCIO DA SEQUÊNCIA EXCLUSIVA V2 ---
 
             // 36. Choice: ValorInicialCobrado / ValorFinalCobrado (2063)
             if (isset($extraInformations[RpsEnumV2::VALUE_INITIAL_CHARGED])) {

@@ -54,7 +54,11 @@ class RpsValidator
                 $item[SimpleFieldsEnum::IM_PROVIDER] = $baseInformation->getIm();
 
             if (isset($item[RpsEnum::ISS_RETENTION])) {
-                $item[RpsEnum::ISS_RETENTION] = $item[RpsEnum::ISS_RETENTION] ? BooleanFields::LOWER_TRUE : BooleanFields::LOWER_FALSE;
+                $issValue = $item[RpsEnum::ISS_RETENTION];
+                $isRetained = ($issValue === true || $issValue === 1 || $issValue === '1'
+                    || strtolower((string) $issValue) === 'true'
+                    || strtolower((string) $issValue) === 's');
+                $item[RpsEnum::ISS_RETENTION] = $isRetained ? BooleanFields::LOWER_TRUE : BooleanFields::LOWER_FALSE;
             } else {
                 $item[RpsEnum::ISS_RETENTION] = BooleanFields::LOWER_FALSE;
             }
