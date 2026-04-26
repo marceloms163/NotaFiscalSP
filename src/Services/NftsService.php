@@ -38,7 +38,7 @@ class NftsService
         return $this->processRequest($baseInformation, $params, NftsMethods::CONSULTA, $builder);
     }
 
-    private function processRequest(BaseInformation $information, $params, $method, InputTransformer $builder, OutputClass $outputClass = null)
+    private function processRequest(BaseInformation $information, $params, $method, InputTransformer $builder, ?OutputClass $outputClass = null)
     {
         // Check Output Type
         $outputClass = !empty($outputClass) ? $outputClass : $this->response;

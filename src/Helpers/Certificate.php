@@ -63,25 +63,40 @@ class Certificate
         return base64_encode($signatureValue);
     }
 
-    public static function rpsSignatureString($params)
+    public static function rpsSignatureString($params, int $version = 1)
     {
-        $document = General::getKey($params, SimpleFieldsEnum::CNPJ) ? General::getKey($params, SimpleFieldsEnum::CNPJ) : General::getKey($params, SimpleFieldsEnum::CPF);
-        //Required Fields
-        $string =
-            sprintf('%08s', General::getKey($params, SimpleFieldsEnum::IM_PROVIDER)) .
-            sprintf('%-5s', General::getKey($params, SimpleFieldsEnum::RPS_SERIES)) . // 5 chars
-            sprintf('%012s', General::getKey($params, SimpleFieldsEnum::RPS_NUMBER)) .
-            str_replace('-', '', (string) General::getKey($params, RpsEnum::EMISSION_DATE)) .
-            General::getKey($params, RpsEnum::RPS_TAX) .
-            General::getKey($params, RpsEnum::RPS_STATUS) .
-            ($params[RpsEnum::ISS_RETENTION] == 'false' ? BooleanFields::FALSE : BooleanFields::TRUE) .
-            sprintf('%015s', str_replace(array('.', ','), '', number_format((float) General::getKey($params, RpsEnum::SERVICE_VALUE), 2))) .
-            sprintf('%015s', str_replace(array('.', ','), '', number_format((float) General::getKey($params, RpsEnum::DEDUCTION_VALUE), 2))) .
-            sprintf('%05s', General::getKey($params, RpsEnum::SERVICE_CODE)) .
-            ((General::getKey($params, SimpleFieldsEnum::CPF)) ? '1' : '2') .
-            sprintf('%014s', $document);
+        // Versão 2 (Reforma Tributária 2026): IM com 12 posições; versão 1: 8 posições
+        $imLength = $version >= 2 ? 12 : 8;
+        $imPrestador = str_pad(substr(trim(General::onlyNumbers(General::getKey($params, SimpleFieldsEnum::IM_PROVIDER))), 0, $imLength), $imLength, '0', STR_PAD_LEFT);
+        $serie = str_pad(substr(trim(General::getKey($params, SimpleFieldsEnum::RPS_SERIES)), 0, 5), 5, ' ', STR_PAD_RIGHT);
+        $numero = str_pad(trim(General::onlyNumbers(General::getKey($params, SimpleFieldsEnum::RPS_NUMBER))), 12, '0', STR_PAD_LEFT);
+        $data = str_replace('-', '', (string) General::getKey($params, RpsEnum::EMISSION_DATE));
+        $tributacao = substr(General::getKey($params, RpsEnum::RPS_TAX), 0, 1);
+        $status = substr(General::getKey($params, RpsEnum::RPS_STATUS), 0, 1);
 
-        // AVAILABLE ON RELEASE 2
+        $issRetido = General::getKey($params, RpsEnum::ISS_RETENTION);
+        $iss = ($issRetido === 'S' || $issRetido === 'true' || $issRetido === true || $issRetido == 1) ? 'S' : 'N';
+
+        // Versão 2: usar ValorInicialCobrado ou ValorFinalCobrado (ValorServicos não existe na v2)
+        if ($version >= 2) {
+            $vServ = General::getKey($params, 'ValorInicialCobrado') ?: General::getKey($params, 'ValorFinalCobrado') ?: General::getKey($params, RpsEnum::SERVICE_VALUE);
+        } else {
+            $vServ = General::getKey($params, RpsEnum::SERVICE_VALUE) ?: General::getKey($params, 'ValorInicialCobrado') ?: General::getKey($params, 'ValorFinalCobrado');
+        }
+        $valorServicos = str_pad((int) round((float) $vServ * 100), 15, '0', STR_PAD_LEFT);
+        $valorDeducoes = str_pad((int) round((float) General::getKey($params, RpsEnum::DEDUCTION_VALUE) * 100), 15, '0', STR_PAD_LEFT);
+        $codigoServico = str_pad(General::onlyNumbers(General::getKey($params, RpsEnum::SERVICE_CODE)), 5, '0', STR_PAD_LEFT);
+
+        $cpfCnpj = General::onlyNumbers(General::getKey($params, SimpleFieldsEnum::CNPJ) ?: General::getKey($params, SimpleFieldsEnum::CPF));
+        $indicadorCpfCnpj = (strlen($cpfCnpj) == 11) ? '1' : (strlen($cpfCnpj) == 14 ? '2' : '3');
+        $documento = str_pad($cpfCnpj, 14, '0', STR_PAD_LEFT);
+
+        $string = $imPrestador . $serie . $numero . $data . $tributacao . $status . $iss . $valorServicos . $valorDeducoes . $codigoServico . $indicadorCpfCnpj . $documento;
+
+        $expectedLength = $version >= 2 ? 90 : 86;
+        if (strlen($string) !== $expectedLength) {
+            throw new Exception("String de assinatura com tamanho inválido (" . strlen($string) . "): " . $string);
+        }
 
         return $string;
     }

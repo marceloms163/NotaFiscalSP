@@ -31,25 +31,17 @@ abstract class NfAbstractV2 implements InputTransformer
             ],
         ];
 
-        if (isset($extraInformations[HeaderEnum::CPFCNPJ_SENDER]))
+        // Para PedidoEnvioRPS (V2), o Cabeçalho deve conter APENAS CPFCNPJRemetente
+        if (isset($extraInformations[HeaderEnum::CPFCNPJ_SENDER]) || isset($extraInformations[HeaderEnum::CPFCNPJ])) {
             $header[HeaderEnum::CPFCNPJ_SENDER] = $this->getDocument($information);
-
-        if (isset($extraInformations[SimpleFieldsEnum::CPF]))
-            $header[HeaderEnum::CPFCNPJ] = [SimpleFieldsEnum::CPF => $extraInformations[SimpleFieldsEnum::CPF]];
-
-        if (isset($extraInformations[HeaderEnum::CPFCNPJ]))
-            $header[HeaderEnum::CPFCNPJ] = $this->getDocument($information);
-
-        if (General::getKey($extraInformations, SimpleFieldsEnum::CNPJ))
-            $header[HeaderEnum::CPFCNPJ] = [SimpleFieldsEnum::CNPJ => $extraInformations[SimpleFieldsEnum::CNPJ]];
-
-        foreach (HeaderEnum::simpleTypes() as $field) {
-            if (isset($extraInformations[$field]))
-                $header[$field] = $extraInformations[$field];
         }
 
-        if (isset($header[HeaderEnum::START_DATE]) && !isset($header[HeaderEnum::END_DATE])) {
-            $header[HeaderEnum::END_DATE] = $header[HeaderEnum::START_DATE];
+        // Se houver campos de lote (transacao, datas), eles só entram se vierem explicitamente
+        // (Isso é usado pelo PedidoEnvioLoteRPSV2)
+        foreach ([HeaderEnum::TRANSACTION, HeaderEnum::START_DATE, HeaderEnum::END_DATE, HeaderEnum::RPS_COUNT, HeaderEnum::SERVICES_TOTAL, HeaderEnum::DEDUCTION_TOTAL] as $field) {
+            if (isset($extraInformations[$field])) {
+                $header[$field] = $extraInformations[$field];
+            }
         }
 
         return [
@@ -130,57 +122,155 @@ abstract class NfAbstractV2 implements InputTransformer
     {
         $rpsItens = [];
         foreach ($rpsList as $extraInformations) {
-            $rps = [
-                DetailEnum::SIGN => Certificate::signItem($information, General::getPath($extraInformations, DetailEnum::SIGN))
+            $rps = [];
+
+            // 1. Assinatura (1894)
+            $rps[DetailEnum::SIGN] = Certificate::signItem($information, General::getPath($extraInformations, DetailEnum::SIGN));
+
+            // 2. ChaveRPS (1899)
+            $rps[ComplexFieldsEnum::RPS_KEY] = [
+                SimpleFieldsEnum::IM_PROVIDER => General::onlyNumbers($information->getIm()),
+                SimpleFieldsEnum::RPS_SERIES => General::getPath($extraInformations, SimpleFieldsEnum::RPS_SERIES),
+                SimpleFieldsEnum::RPS_NUMBER => General::getPath($extraInformations, SimpleFieldsEnum::RPS_NUMBER),
             ];
 
-            $rps = array_merge($rps, $this->makeRpsKey($extraInformations));
+            // Sequence from TiposNFe_v02.xsd tpRPS
+            // 3. TipoRPS (1903)
+            if (isset($extraInformations[RpsEnum::RPS_TYPE]))
+                $rps[RpsEnum::RPS_TYPE] = $extraInformations[RpsEnum::RPS_TYPE];
 
-            foreach (RpsEnum::simpleTypes() as $field) {
-                if (isset($extraInformations[$field]))
-                    $rps[$field] = $extraInformations[$field];
+            // 4. DataEmissao (1908)
+            if (isset($extraInformations[RpsEnum::EMISSION_DATE]))
+                $rps[RpsEnum::EMISSION_DATE] = $extraInformations[RpsEnum::EMISSION_DATE];
+
+            // 5. StatusRPS (1913)
+            if (isset($extraInformations[RpsEnum::RPS_STATUS]))
+                $rps[RpsEnum::RPS_STATUS] = $extraInformations[RpsEnum::RPS_STATUS];
+
+            // 6. TributacaoRPS (1918)
+            if (isset($extraInformations[RpsEnum::RPS_TAX]))
+                $rps[RpsEnum::RPS_TAX] = $extraInformations[RpsEnum::RPS_TAX];
+ 
+            // 7. ValorDeducoes (1923)
+            $rps[RpsEnum::DEDUCTION_VALUE] = $extraInformations[RpsEnum::DEDUCTION_VALUE] ?? '0.00';
+
+            // 9-13. Taxes (1928-1948) - Mandatory sequence
+            foreach ([RpsEnum::PIS_VALUE, RpsEnum::COFINS_VALUE, RpsEnum::INSS_VALUE, RpsEnum::IR_VALUE, RpsEnum::CSLL_VALUE] as $taxField) {
+                $rps[$taxField] = $extraInformations[$taxField] ?? '0.00';
             }
-            // Taker
+
+            // 14. CodigoServico (1953)
+            if (isset($extraInformations[RpsEnum::SERVICE_CODE]))
+                $rps[RpsEnum::SERVICE_CODE] = $extraInformations[RpsEnum::SERVICE_CODE];
+
+            // 15. AliquotaServicos (1958)
+            if (isset($extraInformations[RpsEnum::SERVICE_TAX]))
+                $rps[RpsEnum::SERVICE_TAX] = $extraInformations[RpsEnum::SERVICE_TAX];
+
+            // 16. ISSRetido (1963)
+            if (isset($extraInformations[RpsEnum::ISS_RETENTION]))
+                $rps[RpsEnum::ISS_RETENTION] = ($extraInformations[RpsEnum::ISS_RETENTION] === 'true' || $extraInformations[RpsEnum::ISS_RETENTION] === true || $extraInformations[RpsEnum::ISS_RETENTION] == 1);
+
+            // 17. CPFCNPJTomador (1968)
             $rps[RpsEnum::CPFCNPJ_TAKER] = $this->makeCPFCNPJTaker($extraInformations);
 
-            foreach (RpsEnum::takerInformations() as $field) {
-                if (isset($extraInformations[$field]))
-                    $rps[$field] = $extraInformations[$field];
-            }
+            // 18. InscricaoMunicipalTomador (1973)
+            if (isset($extraInformations[RpsEnum::IM_TAKER]))
+                $rps[RpsEnum::IM_TAKER] = $extraInformations[RpsEnum::IM_TAKER];
+
+            // 19. InscricaoEstadualTomador (1978)
+            if (isset($extraInformations[RpsEnum::IE_TAKER]))
+                $rps[RpsEnum::IE_TAKER] = $extraInformations[RpsEnum::IE_TAKER];
+
+            // 20. RazaoSocialTomador (1983)
+            if (isset($extraInformations[RpsEnum::CORPORATE_NAME_TAKER]))
+                $rps[RpsEnum::CORPORATE_NAME_TAKER] = $extraInformations[RpsEnum::CORPORATE_NAME_TAKER];
+
+            // 21. EnderecoTomador (1988)
             $rps[ComplexFieldsEnum::ADDRESS_TAKER] = $this->makeAddress($extraInformations);
 
+            // 22. EmailTomador (1993)
             if (isset($extraInformations[RpsEnum::EMAIL_TAKER]))
                 $rps[RpsEnum::EMAIL_TAKER] = $extraInformations[RpsEnum::EMAIL_TAKER];
 
+            // 23-26. Intermediary Info (1998-2013)
+            if (isset($extraInformations[RpsEnum::CPFCNPJ_INTERMEDIARY])) {
+                $rps[RpsEnum::CPFCNPJ_INTERMEDIARY] = $this->makeCPFCNPJIntermediary($extraInformations);
+                if (isset($extraInformations[RpsEnum::IM_INTERMEDIARY]))
+                    $rps[RpsEnum::IM_INTERMEDIARY] = $extraInformations[RpsEnum::IM_INTERMEDIARY];
+                if (isset($extraInformations[RpsEnum::INTERMEDIARY_ISS_RETENTION]))
+                    $rps[RpsEnum::INTERMEDIARY_ISS_RETENTION] = $extraInformations[RpsEnum::INTERMEDIARY_ISS_RETENTION];
+                if (isset($extraInformations[RpsEnum::INTERMEDIARY_EMAIL]))
+                    $rps[RpsEnum::INTERMEDIARY_EMAIL] = $extraInformations[RpsEnum::INTERMEDIARY_EMAIL];
+            }
+
+            // 27. Discriminacao (2018)
             if (isset($extraInformations[RpsEnum::DISCRIMINATION]))
                 $rps[RpsEnum::DISCRIMINATION] = $extraInformations[RpsEnum::DISCRIMINATION];
 
-            // Optional Fields
-            if (isset($extraInformations[RpsEnum::CEI_CODE]) && !empty($extraInformations[RpsEnum::CEI_CODE]))
-                $rps[RpsEnum::CEI_CODE] = $extraInformations[RpsEnum::CEI_CODE];
-
-            if (isset($extraInformations[RpsEnum::WORK_REGISTRATION]) && !empty($extraInformations[RpsEnum::WORK_REGISTRATION]))
-                $rps[RpsEnum::WORK_REGISTRATION] = $extraInformations[RpsEnum::WORK_REGISTRATION];
-
-            if (isset($extraInformations[RpsEnum::CITY_INSTALLMENT]) && !empty($extraInformations[RpsEnum::CITY_INSTALLMENT]))
-                $rps[RpsEnum::CITY_INSTALLMENT] = $extraInformations[RpsEnum::CITY_INSTALLMENT];
-
-            if (isset($extraInformations[RpsEnum::ENCAPSULATION_NUMBER]) && !empty($extraInformations[RpsEnum::ENCAPSULATION_NUMBER]))
-                $rps[RpsEnum::ENCAPSULATION_NUMBER] = $extraInformations[RpsEnum::ENCAPSULATION_NUMBER];
-
-            if (isset($extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY]) && !empty($extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY]))
+            // 28-30. Tax Burden (2023-2033)
+            if (isset($extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY]))
                 $rps[RpsEnum::TAX_VALUE_INTERMEDIARY] = $extraInformations[RpsEnum::TAX_VALUE_INTERMEDIARY];
-
-            if (isset($extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY]) && !empty($extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY]))
+            if (isset($extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY]))
                 $rps[RpsEnum::TAX_PERCENT_INTERMEDIARY] = $extraInformations[RpsEnum::TAX_PERCENT_INTERMEDIARY];
-
-            if (isset($extraInformations[RpsEnum::TAX_ORIGIN]) && !empty($extraInformations[RpsEnum::TAX_ORIGIN]))
+            if (isset($extraInformations[RpsEnum::TAX_ORIGIN]))
                 $rps[RpsEnum::TAX_ORIGIN] = $extraInformations[RpsEnum::TAX_ORIGIN];
 
-            foreach (RpsEnumV2::extraTypes() as $field) {
-                if (isset($extraInformations[$field]))
-                    $rps[$field] = $extraInformations[$field];
+            // 31-32. Construction (2038-2043)
+            if (isset($extraInformations[RpsEnum::CEI_CODE]))
+                $rps[RpsEnum::CEI_CODE] = $extraInformations[RpsEnum::CEI_CODE];
+            if (isset($extraInformations[RpsEnum::WORK_REGISTRATION]))
+                $rps[RpsEnum::WORK_REGISTRATION] = $extraInformations[RpsEnum::WORK_REGISTRATION];
+
+            // 33. MunicipioPrestacao (2048)
+            if (isset($extraInformations[RpsEnum::CITY_INSTALLMENT]))
+                $rps[RpsEnum::CITY_INSTALLMENT] = $extraInformations[RpsEnum::CITY_INSTALLMENT];
+
+            // 34. NumeroEncapsulamento (2053)
+            if (isset($extraInformations[RpsEnum::ENCAPSULATION_NUMBER]))
+                $rps[RpsEnum::ENCAPSULATION_NUMBER] = $extraInformations[RpsEnum::ENCAPSULATION_NUMBER];
+
+            // 35. ValorTotalRecebido (2058)
+            if (isset($extraInformations[RpsEnum::TOTAL_VALUE]))
+                $rps[RpsEnum::TOTAL_VALUE] = $extraInformations[RpsEnum::TOTAL_VALUE];
+
+            // 36. Choice: ValorInicialCobrado / ValorFinalCobrado (2063)
+            if (isset($extraInformations[RpsEnumV2::VALUE_INITIAL_CHARGED])) {
+                $rps[RpsEnumV2::VALUE_INITIAL_CHARGED] = $extraInformations[RpsEnumV2::VALUE_INITIAL_CHARGED];
+            } else {
+                $rps[RpsEnumV2::VALUE_FINAL_CHARGED] = $extraInformations[RpsEnumV2::VALUE_FINAL_CHARGED] ?? $extraInformations[RpsEnum::SERVICE_VALUE];
             }
+
+            // 37-41. V2 Financial Details (2076-2096)
+            if (isset($extraInformations[RpsEnumV2::VALUE_FINE]))
+                $rps[RpsEnumV2::VALUE_FINE] = $extraInformations[RpsEnumV2::VALUE_FINE];
+            if (isset($extraInformations[RpsEnumV2::VALUE_INTEREST]))
+                $rps[RpsEnumV2::VALUE_INTEREST] = $extraInformations[RpsEnumV2::VALUE_INTEREST];
+            
+            $rps[RpsEnumV2::VALUE_IPI] = $extraInformations[RpsEnumV2::VALUE_IPI] ?? '0.00';
+            $rps[RpsEnumV2::EXIGIBILITY_SUSPENDED] = (int) ($extraInformations[RpsEnumV2::EXIGIBILITY_SUSPENDED] ?? 0);
+            $rps[RpsEnumV2::ADVANCE_INSTALLMENT_PAYMENT] = (int) ($extraInformations[RpsEnumV2::ADVANCE_INSTALLMENT_PAYMENT] ?? 0);
+
+            // 43-45. NCM/NBS/Activity (2108-2118)
+            if (isset($extraInformations[RpsEnumV2::NCM]))
+                $rps[RpsEnumV2::NCM] = $extraInformations[RpsEnumV2::NCM];
+            if (isset($extraInformations[RpsEnumV2::NBS]))
+                $rps[RpsEnumV2::NBS] = $extraInformations[RpsEnumV2::NBS];
+            if (isset($extraInformations[RpsEnumV2::EVENT_ACTIVITY]))
+                $rps[RpsEnumV2::EVENT_ACTIVITY] = $extraInformations[RpsEnumV2::EVENT_ACTIVITY];
+
+            // 46. gpPrestacao (2123) Choice: cLocPrestacao / cPaisPrestacao
+            if (isset($extraInformations[RpsEnumV2::SERVICE_LOCATION])) {
+                $rps[RpsEnumV2::SERVICE_LOCATION] = $extraInformations[RpsEnumV2::SERVICE_LOCATION];
+            } elseif (isset($extraInformations[RpsEnumV2::SERVICE_COUNTRY])) {
+                $rps[RpsEnumV2::SERVICE_COUNTRY] = $extraInformations[RpsEnumV2::SERVICE_COUNTRY];
+            } else {
+                $rps[RpsEnumV2::SERVICE_LOCATION] = '3550308'; // Default SP
+            }
+
+            // 47. IBSCBS Group (2122)
+            if (isset($extraInformations[RpsEnumV2::IBSCBS]))
+                $rps[RpsEnumV2::IBSCBS] = $extraInformations[RpsEnumV2::IBSCBS];
 
             $rpsItens[] = $rps;
         }
@@ -198,6 +288,16 @@ abstract class NfAbstractV2 implements InputTransformer
             return [SimpleFieldsEnum::CNPJ => $extraInformations[SimpleFieldsEnum::CNPJ]];
 
         return [SimpleFieldsEnum::CNPJ => null];
+    }
+
+    private function makeCPFCNPJIntermediary($extraInformations)
+    {
+        $document = $extraInformations[RpsEnum::CPFCNPJ_INTERMEDIARY];
+        $documentType = strlen(General::onlyNumbers($document)) > 11 ? SimpleFieldsEnum::CNPJ : SimpleFieldsEnum::CPF;
+
+        return [
+            $documentType => $document
+        ];
     }
 
     private function makeAddress($extraInformations)

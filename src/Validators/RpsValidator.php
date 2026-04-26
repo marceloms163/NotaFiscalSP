@@ -32,9 +32,19 @@ class RpsValidator
 
     public static function validateRps(BaseInformation $baseInformation, $rps2)
     {
+        return self::validateRpsInternal($baseInformation, $rps2, 1);
+    }
+
+    public static function validateRpsV2(BaseInformation $baseInformation, $rps2)
+    {
+        return self::validateRpsInternal($baseInformation, $rps2, 2);
+    }
+
+    private static function validateRpsInternal(BaseInformation $baseInformation, $rps2, int $version)
+    {
         $rpsOK = [];
 
-        $rps = !array_key_exists(0, $rps2) ? [$rps2] : $rps2 ;
+        $rps = !array_key_exists(0, $rps2) ? [$rps2] : $rps2;
 
         foreach ($rps as $item) {
             if ($item instanceof Rps) {
@@ -43,14 +53,14 @@ class RpsValidator
             if (empty($item[SimpleFieldsEnum::IM_PROVIDER]))
                 $item[SimpleFieldsEnum::IM_PROVIDER] = $baseInformation->getIm();
 
-            if(isset($item[RpsEnum::ISS_RETENTION])){
+            if (isset($item[RpsEnum::ISS_RETENTION])) {
                 $item[RpsEnum::ISS_RETENTION] = $item[RpsEnum::ISS_RETENTION] ? BooleanFields::LOWER_TRUE : BooleanFields::LOWER_FALSE;
-            }else{
+            } else {
                 $item[RpsEnum::ISS_RETENTION] = BooleanFields::LOWER_FALSE;
             }
 
             $item[ComplexFieldsEnum::RPS_KEY] = true;
-            $item[DetailEnum::SIGN] = Certificate::rpsSignatureString($item);
+            $item[DetailEnum::SIGN] = Certificate::rpsSignatureString($item, $version);
             $rpsOK[] = $item;
         }
         return $rpsOK;
